@@ -1,0 +1,6 @@
+# Dev/test-only dependencies — not needed to run the service, only to test
+# it. Install with: pip install -r requirements.txt -r requirements-dev.txt
+
+pytest>=8.0,<9.0
+httpx>=0.27,<1.0
+numpy>=1.26,<3.0

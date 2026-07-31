@@ -1,0 +1,12 @@
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.29,<1.0
+pyjwt>=2.8,<3.0
+python-dotenv>=1.0,<2.0
+
+# --- Stage 1 model (app/predictor.py, vendored ringwave_deepfake/) ---
+# Pinned to the exact versions the trained checkpoint (checkpoints/stage1/
+# best.pt) was validated to load and run under.
+torch==2.12.0
+torchaudio==2.11.0
+webrtcvad-wheels==2.0.14
+numpy>=1.26,<3.0

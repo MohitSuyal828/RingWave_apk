@@ -1,0 +1,95 @@
+# ── RingWave — full stack, self-hosted ─────────────────────────────────────
+#
+# `docker compose up --build` brings up all four services: Postgres,
+# backend, AI detection service, and the frontend (built + served by nginx).
+#
+# This is for local development or a single-host self-hosted deployment.
+# For Railway/Render/Vercel, this compose file isn't used directly — each
+# platform builds/runs one service from its own Dockerfile (or, for Vercel,
+# builds the frontend without Docker at all). See the deployment notes in
+# the repo root for that path.
+#
+# NOTE on frontend URLs: the frontend's VITE_* variables below point at
+# localhost with the *host-published* ports (5000, 8000), not at the
+# internal Docker service names (`backend`, `ai-service`) — this matters
+# because those env vars end up baked into JS that runs in the *browser*,
+# which has no notion of the Docker-internal network and cannot resolve
+# service names. If you're deploying this compose file to an actual server
+# rather than running it locally, replace `localhost` with that server's
+# real hostname/IP (and put a real reverse proxy + TLS in front of it —
+# see the HTTPS notes in the repo root).
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-1234}
+      POSTGRES_DB: ringwave_db
+    volumes:
+      - ringwave_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ringwave_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      DATABASE_URL: postgres://postgres:${DB_PASSWORD:-1234}@postgres:5432/ringwave_db
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set — see backend/.env.example}
+      ACCESS_TOKEN_EXPIRES_IN: 15m
+      REFRESH_TOKEN_EXPIRES_IN_DAYS: 7
+      PASSWORD_RESET_EXPIRES_IN_MINUTES: 15
+      FRONTEND_URL: http://localhost:5173
+      CORS_ORIGINS: http://localhost:5173,http://localhost:80
+      LOG_LEVEL: info
+    ports:
+      - "5000:5000"
+
+  ai-service:
+    build:
+      context: ./ai-service
+    restart: unless-stopped
+    environment:
+      AI_SERVICE_HOST: 0.0.0.0
+      AI_SERVICE_PORT: 8000
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set — see backend/.env.example}
+      JWT_ALGORITHM: HS256
+      JWT_ISSUER: ringwave-api
+      AI_SERVICE_ALLOWED_ORIGINS: http://localhost:5173,http://localhost:80
+      AI_SERVICE_MODEL_DEVICE: cpu
+      AI_SERVICE_TAU1: "0.12"
+      AI_SERVICE_TAU2: "0.95"
+      AI_SERVICE_USE_VAD: "true"
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:5000/api/v1
+        VITE_SOCKET_URL: http://localhost:5000
+        VITE_DETECTION_WS_URL: ws://localhost:8000/ws/detect
+        VITE_APP_NAME: RingWave
+        VITE_APP_VERSION: 1.0.0
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - ai-service
+    ports:
+      - "5173:80"
+
+volumes:
+  ringwave_pgdata:
