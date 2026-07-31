@@ -1,0 +1,76 @@
+name: Build Android APK
+
+# Builds the RingWave Android app and uploads the resulting APK as a
+# downloadable workflow artifact. This exists because compiling a real
+# Android app requires the Android SDK, build-tools, and Google's Maven
+# repository — none of which were reachable from the sandboxed environment
+# this project was developed in. GitHub's own hosted runners have normal
+# internet access, so this is where the actual .apk gets produced.
+#
+# Trigger manually from the Actions tab ("Run workflow"), or push to main.
+# The finished APK downloads from the workflow run's "Artifacts" section
+# once it completes (usually a few minutes).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/build-android.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Real backend/AI-service URLs are already committed in
+      # frontend/.env.production — Vite picks these up automatically for
+      # `vite build` (production mode by default). Deliberately NOT
+      # overriding them with GitHub Actions secrets here: an unset secret
+      # resolves to an empty string, which would silently blank out the
+      # correct values (actual env vars take priority over .env file
+      # values in Vite) rather than falling back to them.
+      - name: Build web app
+        run: npm run build
+
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Build debug APK
+        working-directory: frontend/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ringwave-debug-apk
+          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
