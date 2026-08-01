@@ -247,6 +247,12 @@ const socketHandler = (io) => {
 
         for (const invitee of onlineInvitees) {
           const receiverSocketId = getSocketId(onlineUsers, invitee.id);
+          logger.info({
+            caller: userId,
+            receiver: invitee.id,
+            receiverSocketId,
+            onlineUsers: [...onlineUsers.entries()],
+          }, "CALL DEBUG");
 
           io.to(receiverSocketId).emit(EVENTS.CALL_INCOMING, {
             callId: call.callId,
@@ -459,8 +465,11 @@ const socketHandler = (io) => {
     socket.on("disconnect", () => {
       logger.info({ userId }, "socket:disconnected");
 
-      onlineUsers.delete(userId);
-      onlineUserNames.delete(userId);
+      const currentSocket = onlineUsers.get(userId);
+      if (currentSocket === socket.id) {
+        onlineUsers.delete(userId);
+        onlineUserNames.delete(userId);
+      }
 
       const affectedCalls = cleanupUserDisconnect(userId);
 
