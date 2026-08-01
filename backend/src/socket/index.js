@@ -244,26 +244,24 @@ const socketHandler = (io) => {
           callId: call.callId,
           to: onlineInvitees.map((i) => i.id),
         });
-
         for (const invitee of onlineInvitees) {
           const receiverSocketId = getSocketId(onlineUsers, invitee.id);
           logger.info({
-            caller: userId,
-            receiver: invitee.id,
+            invitee: invitee.id,
             receiverSocketId,
-            onlineUsers: [...onlineUsers.entries()],
-          }, "CALL DEBUG");
-
+            event: "CALL_INCOMING"
+          });
           io.to(receiverSocketId).emit(EVENTS.CALL_INCOMING, {
             callId: call.callId,
             from: userId,
             callerName,
             isGroup: onlineInvitees.length > 1,
           });
-
+          logger.info({
+            emittedTo: receiverSocketId
+          });
           startInviteeRingTimer(io, call, invitee.id);
         }
-
         logger.info({ callId: call.callId }, "call:created");
       }
     );
