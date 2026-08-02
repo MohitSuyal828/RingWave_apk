@@ -58,4 +58,38 @@ const isContact = async (ownerId, contactId) => {
   return result.rows.length > 0;
 };
 
-module.exports = { addContact, removeContact, listContacts, isContact };
+// ─── getSubscriberIds ──────────────────────────────────────────────────────
+//
+// Reverse lookup: which users have `contactId` in THEIR contact list, i.e.
+// who should be told when `contactId` comes online/goes offline. Contacts
+// are one-directional (owner_id -> contact_id) with no guarantee of being
+// mutual, so this is not the same query as listContacts.
+const getSubscriberIds = async (contactId) => {
+  const query = `SELECT owner_id FROM contacts WHERE contact_id = $1;`;
+
+  const result = await pool.query(query, [contactId]);
+
+  return result.rows.map((row) => row.owner_id);
+};
+
+// ─── getContactIds ─────────────────────────────────────────────────────────
+//
+// Just the bare contact_id list for one owner — used to build the initial
+// online/offline snapshot sent to a user right after they connect, without
+// pulling the full name/email join listContacts() does.
+const getContactIds = async (ownerId) => {
+  const query = `SELECT contact_id FROM contacts WHERE owner_id = $1;`;
+
+  const result = await pool.query(query, [ownerId]);
+
+  return result.rows.map((row) => row.contact_id);
+};
+
+module.exports = {
+  addContact,
+  removeContact,
+  listContacts,
+  isContact,
+  getSubscriberIds,
+  getContactIds,
+};
