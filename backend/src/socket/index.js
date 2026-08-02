@@ -329,10 +329,6 @@ const socketHandler = (io) => {
     socket.on(
       EVENTS.CALL_ACCEPTED,
       ({ callId }) => {
-        logger.info({
-          userId,
-          callId
-        }, "CALL_ACCEPTED RECEIVED");
         const call = acceptCall({
           callId,
           userId,
