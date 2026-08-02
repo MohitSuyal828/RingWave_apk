@@ -71,6 +71,7 @@ export const SOCKET_EVENTS = {
   CONTACT_ACCEPTED: "contact:accepted",
   CONTACT_ONLINE: "contact:online",
   CONTACT_OFFLINE: "contact:offline",
+  CONTACTS_ONLINE_SNAPSHOT: "contacts:online_snapshot",
 
   // Notification events
   NOTIFICATION_NEW: "notification:new",
