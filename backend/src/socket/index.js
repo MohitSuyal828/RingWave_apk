@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 
 const logger = require("../config/logger");
 const { findUserById } = require("../models/userModel");
+const { getSubscriberIds, getContactIds } = require("../models/contactModel");
 
 const { EVENTS } = require("./events");
 const {
@@ -150,6 +151,45 @@ const startInviteeRingTimer = (io, call, userId) => {
   });
 };
 
+/**
+ * Tells everyone who has `userId` in their own contact list that `userId`
+ * just came online or went offline. Best-effort: a DB error here must
+ * never take down the socket connection itself, so it's logged, not
+ * thrown.
+ */
+const broadcastPresence = async (io, userId, event) => {
+  try {
+    const subscriberIds = await getSubscriberIds(userId);
+
+    for (const subscriberId of subscriberIds) {
+      const subscriberSocketId = getSocketId(onlineUsers, subscriberId);
+      if (subscriberSocketId) {
+        io.to(subscriberSocketId).emit(event, { userId });
+      }
+    }
+  } catch (err) {
+    logger.error({ err, userId, event }, "presence:broadcast_failed");
+  }
+};
+
+/**
+ * Sends a newly-connected user a one-time snapshot of which of THEIR
+ * contacts are already online — CONTACT_ONLINE alone only covers changes
+ * that happen *after* this user connects, so without this, every contact
+ * would show as offline until they happened to reconnect while this user
+ * was already watching.
+ */
+const sendOnlineSnapshot = async (socket, userId) => {
+  try {
+    const myContactIds = await getContactIds(userId);
+    const onlineIds = myContactIds.filter((id) => onlineUsers.has(id));
+
+    socket.emit(EVENTS.CONTACTS_ONLINE_SNAPSHOT, { onlineIds });
+  } catch (err) {
+    logger.error({ err, userId }, "presence:snapshot_failed");
+  }
+};
+
 const socketHandler = (io) => {
   // =====================================================
   // AUTHENTICATION
@@ -202,6 +242,11 @@ const socketHandler = (io) => {
       userId,
       message: "Socket connected successfully",
     });
+
+    // Presence: tell people who have me as a contact that I'm online now,
+    // and give me a snapshot of which of my own contacts are online.
+    broadcastPresence(io, userId, EVENTS.CONTACT_ONLINE);
+    sendOnlineSnapshot(socket, userId);
 
     // =====================================================
     // OUTGOING CALL (1:1 or group — `to` is always an array)
@@ -461,13 +506,36 @@ const socketHandler = (io) => {
     // =====================================================
 
     socket.on("disconnect", () => {
+      const currentSocket = onlineUsers.get(userId);
+      const isCurrentSocket = currentSocket === socket.id;
+
+      // This user may already have a NEWER socket registered for them —
+      // e.g. a brief mobile network drop that reconnected (creating a new
+      // socket.id, re-running reconnectParticipant() above) before this
+      // OLD socket's own "disconnect" event got around to firing. That is
+      // extremely common on cellular/backgrounding and is exactly the
+      // "sometimes calls are inconsistent / Accept does nothing / a call
+      // disappears again a moment after connecting" failure mode: without
+      // this guard, this stale event would run cleanupUserDisconnect()
+      // below and silently rip the user out of a call (or a pending
+      // invite) they are still actively on via their new connection.
+      if (!isCurrentSocket) {
+        logger.info(
+          { userId, staleSocketId: socket.id, currentSocketId: currentSocket },
+          "socket:disconnected (stale — already superseded, skipping cleanup)"
+        );
+        return;
+      }
+
       logger.info({ userId }, "socket:disconnected");
 
-      const currentSocket = onlineUsers.get(userId);
-      if (currentSocket === socket.id) {
-        onlineUsers.delete(userId);
-        onlineUserNames.delete(userId);
-      }
+      onlineUsers.delete(userId);
+      onlineUserNames.delete(userId);
+
+      // Presence: tell people who have me as a contact that I've gone
+      // offline. Only reached when isCurrentSocket is true (guarded
+      // above), so this never fires for a stale/superseded connection.
+      broadcastPresence(io, userId, EVENTS.CONTACT_OFFLINE);
 
       const affectedCalls = cleanupUserDisconnect(userId);
 
