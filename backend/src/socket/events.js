@@ -21,6 +21,15 @@ const EVENTS = Object.freeze({
   SIGNAL_OFFER: "signal:offer",
   SIGNAL_ANSWER: "signal:answer",
   SIGNAL_ICE: "signal:ice",
+
+  // Presence — matches SOCKET_EVENTS in frontend/src/services/socket.ts.
+  // CONTACT_ONLINE/CONTACT_OFFLINE were already defined on the frontend
+  // but nothing on the backend ever emitted them (see socket/index.js's
+  // connection/disconnect handlers) — every contact showed the hardcoded
+  // "offline" dot regardless of real status.
+  CONTACT_ONLINE: "contact:online",
+  CONTACT_OFFLINE: "contact:offline",
+  CONTACTS_ONLINE_SNAPSHOT: "contacts:online_snapshot",
 });
 
 const CALL_STATE = Object.freeze({
